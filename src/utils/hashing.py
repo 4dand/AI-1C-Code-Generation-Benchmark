@@ -71,31 +71,40 @@ def compare_hashes(hashes: list[str]) -> dict:
     Сравнить список хешей для анализа детерминизма
     
     Args:
-        hashes: Список хешей (минимум 3: seed1, seed1, seed2)
+        hashes: Список хешей от всех прогонов
         
     Returns:
         {
-            "same_seed_match": bool,  # Совпадают ли первые два
-            "different_seed_differs": bool,  # Отличается ли третий
-            "all_same": bool,  # Все одинаковые
-            "unique_count": int  # Количество уникальных
+            "total_runs": int,  # Всего прогонов
+            "unique_count": int,  # Количество уникальных ответов
+            "match_rate": float,  # Процент совпадений (0.0 - 1.0)
+            "most_common_hash": str,  # Самый частый хеш
+            "most_common_count": int,  # Сколько раз встретился
         }
     """
-    if len(hashes) < 2:
+    if not hashes:
         return {
-            "same_seed_match": True,
-            "different_seed_differs": False,
-            "all_same": True,
-            "unique_count": len(set(hashes))
+            "total_runs": 0,
+            "unique_count": 0,
+            "match_rate": 0.0,
+            "most_common_hash": "",
+            "most_common_count": 0
         }
     
-    same_seed_match = hashes[0] == hashes[1] if len(hashes) >= 2 else True
-    different_seed_differs = hashes[0] != hashes[2] if len(hashes) >= 3 else False
-    unique = set(hashes)
+    from collections import Counter
+    counter = Counter(hashes)
+    most_common_hash, most_common_count = counter.most_common(1)[0]
+    
+    # match_rate = сколько ответов совпадают с самым частым / всего
+    # Например: [A, A, B] -> 2/3 = 0.667 (67%)
+    # Например: [A, A, A] -> 3/3 = 1.0 (100%)
+    # Например: [A, B, C] -> 1/3 = 0.333 (33%)
+    match_rate = most_common_count / len(hashes)
     
     return {
-        "same_seed_match": same_seed_match,
-        "different_seed_differs": different_seed_differs,
-        "all_same": len(unique) == 1,
-        "unique_count": len(unique)
+        "total_runs": len(hashes),
+        "unique_count": len(counter),
+        "match_rate": match_rate,
+        "most_common_hash": most_common_hash,
+        "most_common_count": most_common_count
     }
