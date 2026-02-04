@@ -214,9 +214,15 @@ def create_task_summary(task_result: Dict[str, Any], timestamp: str) -> str:
     det = task_result.get("determinism", {})
     if det:
         lines.append("--- Детерминизм ---")
-        lines.append(f"Детерминирован: {'Да' if det.get('is_deterministic') else 'Нет'}")
-        lines.append(f"Совпадение при одинаковом seed: {'Да' if det.get('same_seed_match') else 'Нет'}")
-        lines.append(f"Различие при разном seed: {'Да' if det.get('different_seed_differs') else 'Нет'}")
+        total_runs = det.get("total_runs", 0)
+        unique = det.get("unique_responses", 0)
+        match_rate = det.get("match_rate", 0.0) * 100
+        most_common_count = det.get("most_common_count", 0)
+        
+        lines.append(f"Процент совпадений: {match_rate:.1f}%")
+        lines.append(f"Совпадающих ответов: {most_common_count} из {total_runs}")
+        lines.append(f"Уникальных ответов: {unique}")
+        
         if det.get("note"):
             lines.append(f"Примечание: {det.get('note')}")
         lines.append("")
