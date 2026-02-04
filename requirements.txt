@@ -1,22 +1,6 @@
-# AI-1C-Code-Generation-Benchmark
-# Requirements
-
-# HTTP клиент
 requests>=2.31.0
-
-# Переменные окружения
 python-dotenv>=1.0.0
-
-# YAML парсинг
 PyYAML>=6.0.1
-
-# Асинхронный HTTP (для MCP)
 aiohttp>=3.9.0
-
-# Тестирование
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
-
-# Опционально: для разработки
-# black>=24.0.0
-# ruff>=0.1.0
