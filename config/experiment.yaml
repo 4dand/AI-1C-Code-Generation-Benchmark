@@ -1,0 +1,18 @@
+# общие настройки эксперимента
+
+experiment:
+  name: "AI-1C-Code-Generation-Benchmark"
+  version: "1.0.0"
+  author: "Andreev Danila"
+  date: "2026-02-04"
+  
+hashing:
+  algorithm: "md5" # убирать пробелы/переносы перед хешированием
+  normalize: true  # извлекать код из markdown блоков
+  extract_code: true            
+
+paths:
+  models: "config/models.yaml"
+  tasks_A: "config/tasks_category_A.yaml"
+  tasks_B: "config/tasks_category_B.yaml"
+  output: "results/"

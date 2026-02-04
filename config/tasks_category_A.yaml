@@ -9,15 +9,13 @@ category:
 # параметры генерации для этой категории
 generation:
   max_tokens: 4096
-  
-  # параметры по моделям
   model_params:
     claude:
       temperature: 0.0
-      # claude не поддерживает seed
+      runs: 3  # сlaude без seed — указываем явно количество прогонов
     gpt:
       temperature: 0.1
-      seeds: [178, 256, 349]
+      seeds: [178, 256, 349]  # длина = количество прогонов
     gemini:
       temperature: 0.1
       seeds: [178, 256, 349]
