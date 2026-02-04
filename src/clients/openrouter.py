@@ -46,6 +46,25 @@ class OpenRouterClient:
         if default_headers:
             self.headers.update(default_headers)
     
+    def _format_messages(self, messages: List[ChatMessage]) -> List[Dict]:
+        """
+        Форматировать сообщения для API с поддержкой tool calls
+        """
+        formatted = []
+        for msg in messages:
+            msg_dict = {"role": msg.role, "content": msg.content}
+            
+            # Для assistant с tool_calls
+            if msg.tool_calls:
+                msg_dict["tool_calls"] = msg.tool_calls
+            
+            # Для tool response
+            if msg.tool_call_id:
+                msg_dict["tool_call_id"] = msg.tool_call_id
+            
+            formatted.append(msg_dict)
+        return formatted
+    
     def chat_completion(
         self,
         model: str,
@@ -73,7 +92,7 @@ class OpenRouterClient:
         """
         request_body = {
             "model": model,
-            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "messages": self._format_messages(messages),
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
@@ -96,9 +115,11 @@ class OpenRouterClient:
                 data = response.json()
                 choices = data.get("choices", [])
                 content = ""
+                tool_calls = None
                 if choices:
                     message = choices[0].get("message", {})
-                    content = message.get("content", "")
+                    content = message.get("content", "") or ""
+                    tool_calls = message.get("tool_calls")
                 usage = data.get("usage", {})
                 
                 return GenerationResult(
@@ -109,6 +130,7 @@ class OpenRouterClient:
                     tokens_total=usage.get("total_tokens", 0),
                     elapsed_time=elapsed,
                     model_used=data.get("model", model),
+                    tool_calls=tool_calls,
                     raw_response=data
                 )
             else:
