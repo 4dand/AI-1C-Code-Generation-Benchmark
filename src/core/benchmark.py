@@ -1,466 +1,752 @@
 """
-Benchmark Runner - ядро для запуска экспериментов
+BenchmarkRunner — оркестратор запуска экспериментов
 
-Функции:
-- Загрузка конфигов
-- Запуск генерации кода
-- Сбор результатов
-- Сохранение и экспорт
+Центральный компонент фреймворка, отвечающий за:
+- Загрузку конфигурации эксперимента
+- Инициализацию клиентов (OpenRouter, MCP)
+- Запуск задач и сбор результатов
+- Анализ детерминизма
+- Сохранение результатов
+
+Использование:
+    from src.core import BenchmarkRunner
+    
+    runner = BenchmarkRunner()
+    await runner.init_mcp()
+    
+    result = await runner.run_experiment(
+        category="B",
+        model_keys=["gemini"],
+        task_ids=["B1", "B2"]
+    )
+    
+    await runner.close_mcp()
 """
 
-import os
-import asyncio
-from pathlib import Path
+import logging
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional, Dict, Any
-from dataclasses import asdict
 
-from ..schemas.config import (
-    ModelConfig, 
-    TaskConfig, 
-    GenerationParams,
-    ExperimentConfig,
-    MCPConfig
-)
-from ..schemas.results import (
-    ChatMessage,
-    RunResult,
-    TaskResult, 
-    ExperimentResult,
-    DeterminismResult
-)
+from ..config.settings import get_settings
 from ..clients.openrouter import OpenRouterClient
 from ..clients.mcp import MCPClient
+from ..schemas.models import ModelConfig, ModelsRegistry
+from ..schemas.tasks import TaskConfig, TasksFile
+from ..schemas.messages import ChatMessage
+from ..schemas.results import (
+    RunResult,
+    TaskResult,
+    ExperimentResult,
+    DeterminismResult,
+    ContextLoadResult,
+)
 from ..utils.file_ops import load_yaml, save_json, ensure_dir
 from ..utils.hashing import compute_hash, compare_hashes
-from ..utils.logging import log, log_section
 from ..utils.code_export import export_experiment_code
+from .context_loader import AgenticContextLoader
 
-from .context_loader import SmartContextLoader
 
+logger = logging.getLogger(__name__)
+
+
+def _format_cost(cost: float) -> str:
+    """Форматировать стоимость для логов"""
+    if cost < 0.0001:
+        return f"${cost:.6f}"
+    return f"${cost:.4f}"
+
+
+def _format_time(seconds: float) -> str:
+    """Форматировать время для логов"""
+    if seconds < 1:
+        return f"{seconds*1000:.0f}мс"
+    return f"{seconds:.1f}с"
+
+
+# =============================================================================
+# Основной класс
+# =============================================================================
 
 class BenchmarkRunner:
     """
-    Ядро бенчмарка — координирует весь процесс тестирования моделей
+    Оркестратор запуска бенчмарка
+    
+    Координирует весь процесс эксперимента:
+    1. Загрузка конфигурации (модели, задачи)
+    2. Инициализация клиентов API
+    3. Запуск задач с несколькими прогонами
+    4. Анализ детерминизма ответов
+    5. Сохранение результатов
+    
+    Атрибуты:
+        llm: Клиент OpenRouter для генерации
+        mcp: Клиент MCP сервера (для категории B)
+        context_loader: Агент загрузки контекста (для категории B)
+        
+    Example:
+        runner = BenchmarkRunner()
+        result = await runner.run_experiment("A", ["gemini"])
+        print(f"Токенов: {result.total_tokens}")
     """
     
     def __init__(
         self,
-        config_dir: str = "config",
-        results_dir: str = "results",
-        code_outputs_dir: str = "code_outputs",
-        api_key: str = None,
-        export_code: bool = True
+        config_dir: Optional[str] = None,
+        results_dir: Optional[str] = None,
     ):
         """
-        Аргументы:
-            config_dir: Папка с конфигурациями
-            results_dir: Папка для сохранения результатов
-            code_outputs_dir: Папка для экспорта .bsl файлов
-            api_key: API ключ OpenRouter (или из переменной окружения)
-            export_code: Экспортировать ли код в .bsl файлы
+        Инициализация BenchmarkRunner
+        
+        Args:
+            config_dir: Путь к папке конфигов (если None — из Settings)
+            results_dir: Путь к папке результатов (если None — из Settings)
         """
-        self.config_dir = Path(config_dir)
-        self.results_dir = Path(results_dir)
-        self.code_outputs_dir = Path(code_outputs_dir)
-        self.export_code = export_code
-        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
+        self._settings = get_settings()
         
-        if not self.api_key:
-            raise ValueError("API ключ не предоставлен. Установите переменную окружения OPENROUTER_API_KEY.")
+        self.config_dir = Path(config_dir or self._settings.paths.configs_dir)
+        self.results_dir = Path(results_dir or self._settings.paths.raw_results_dir)
         
-        self.experiment_config = load_yaml(self.config_dir / "experiment.yaml")
-        self.models_config = load_yaml(self.config_dir / "models.yaml")
-        self.llm = OpenRouterClient(
-            api_key=self.api_key,
-            default_headers={
-                "HTTP-Referer": "https://1c-benchmark.local",
-                "X-Title": "AI-1C-Code-Generation-Benchmark"
-            }
-        )
+        # Клиенты API
+        self.llm = OpenRouterClient.from_settings(self._settings)
         self.mcp: Optional[MCPClient] = None
-        self.context_loader: Optional[SmartContextLoader] = None
-        ensure_dir(self.results_dir)
-    
-    def get_model_config(self, model_key: str) -> ModelConfig:
-        """Получить конфигурацию модели по ключу"""
-        model_data = self.models_config["models"][model_key]
-        meta = model_data.get("meta", {})
+        self.context_loader: Optional[AgenticContextLoader] = None
         
-        return ModelConfig(
-            id=model_data["id"],
-            name=model_data["name"],
-            context_window=meta.get("context_window", 0),
-            price_input=meta.get("price_input", 0),
-            price_output=meta.get("price_output", 0),
-            supports_seed=meta.get("supports_seed", False),
-            supports_tools=meta.get("supports_tools", False),
-            determinism_param=meta.get("determinism_param", "temperature")
-        )
-    
-    def load_tasks(self, category: str) -> List[TaskConfig]:
-        """Загрузить задачи указанной категории"""
-        config = load_yaml(self.config_dir / f"tasks_category_{category}.yaml")
-        tasks = []
-        for task_data in config.get("tasks", []):
-            tasks.append(TaskConfig(
-                id=task_data["id"],
-                name=task_data["name"],
-                difficulty=task_data.get("difficulty", "medium"),
-                prompt=task_data["prompt"],
-                expected_objects=task_data.get("expected_objects", [])
-            ))
+        # Кэш конфигурации
+        self._models_registry: Optional[ModelsRegistry] = None
+        self._tasks_cache: Dict[str, TasksFile] = {}
         
-        return tasks
+        logger.info(f"BenchmarkRunner инициализирован (configs: {self.config_dir})")
     
-    def get_system_prompt(self, category: str) -> str:
-        """Получить системный промпт для категории задач"""
-        config = load_yaml(self.config_dir / f"tasks_category_{category}.yaml")
-        return config.get("system_prompt", "")
+    # =========================================================================
+    # Публичный API — инициализация
+    # =========================================================================
     
-    def get_generation_params(self, category: str, model_key: str) -> Dict[str, Any]:
+    async def init_mcp(self, use_mock: bool = True) -> bool:
         """
-        Получить параметры генерации для модели из конфига категории
+        Инициализировать MCP клиент для категории B
         
-        Возвращает:
-            Dict с ключами: temperature, seeds (или runs для Claude)
+        Args:
+            use_mock: Использовать мок-сервер (True) или реальный (False)
+            
+        Returns:
+            True если соединение установлено
         """
-        config = load_yaml(self.config_dir / f"tasks_category_{category}.yaml")
-        generation = config.get("generation", {})
-        model_params = generation.get("model_params", {}).get(model_key, {})
-        
-        return {
-            "temperature": model_params.get("temperature", 0.0),
-            "seeds": model_params.get("seeds", [42, 42, 999]),
-            "runs": model_params.get("runs", 3),
-            "max_tokens": generation.get("max_tokens", 4096)
-        }
-    
-    async def init_mcp(self, use_mock: bool = True):
-        """Инициализировать MCP клиент для работы с метаданными 1С"""
         if use_mock:
-            # Импортируем mock только при необходимости
-            from tests.mocks import MockMCPClient
+            logger.info("Инициализация MCP мок-сервера...")
+            from tests.mocks.mcp_mock import MockMCPClient
             self.mcp = MockMCPClient()
         else:
-            mcp_config = MCPConfig(
-                url=self.experiment_config.get("mcp", {}).get("url", "http://localhost:8000")
-            )
-            self.mcp = MCPClient(mcp_config)
+            logger.info("Инициализация реального MCP клиента...")
+            self.mcp = MCPClient.from_settings(self._settings)
         
-        await self.mcp.connect()
-        self.context_loader = SmartContextLoader(
-            mcp_client=self.mcp,
-            llm_client=self.llm,
-            analysis_model=self.models_config.get("analysis_model", "google/gemini-2.0-flash-001"),
-            config_dir=str(self.config_dir)
-        )
+        connected = await self.mcp.connect()
+        
+        if connected:
+            self.context_loader = AgenticContextLoader(
+                mcp_client=self.mcp,
+                llm_client=self.llm,
+            )
+            logger.info("MCP клиент готов к работе")
+        else:
+            logger.error("Не удалось подключиться к MCP серверу")
+        
+        return connected
     
-    async def close_mcp(self):
-        """Закрыть MCP соединение"""
+    async def close_mcp(self) -> None:
+        """Закрыть соединение с MCP сервером"""
         if self.mcp:
             await self.mcp.disconnect()
+            self.mcp = None
+            self.context_loader = None
+            logger.info("MCP соединение закрыто")
     
-    def _run_generation(
-        self,
-        model_config: ModelConfig,
-        messages: List[ChatMessage],
-        run_index: int,
-        seed: Optional[int] = None,
-        temperature: float = 0.0
-    ) -> RunResult:
-        """
-        Выполнить один прогон генерации кода
-        """
-        result = self.llm.chat_completion(
-            model=model_config.id,
-            messages=messages,
-            temperature=temperature,
-            seed=seed,
-            max_tokens=4096
-        )
-        if result.success:
-            # вычисляем хеш ответа и стоимость
-            response_hash = compute_hash(result.content)
-            costs = self.llm.calculate_cost(
-                model_config,
-                result.tokens_input,
-                result.tokens_output
-            )
-            return RunResult(
-                run_index=run_index,
-                seed=seed,
-                temperature=temperature,
-                response=result.content,
-                response_hash=response_hash,
-                tokens_input=result.tokens_input,
-                tokens_output=result.tokens_output,
-                tokens_total=result.tokens_total,
-                elapsed_time=result.elapsed_time,
-                cost_input=costs["input"],
-                cost_output=costs["output"],
-                cost_total=costs["total"],
-                success=True
-            )
-        else:
-            return RunResult(
-                run_index=run_index,
-                seed=seed,
-                temperature=temperature,
-                response="",
-                response_hash="",
-                success=False,
-                error=result.error
-            )
-    
-    def _analyze_determinism(self, runs: List[RunResult]) -> DeterminismResult:
-        """Анализ детерминизма по результатам прогонов"""
-        hashes = [r.response_hash for r in runs if r.success]
-        
-        if len(hashes) == 0:
-            return DeterminismResult(
-                total_runs=0,
-                unique_responses=0,
-                match_rate=0.0,
-                most_common_hash="",
-                most_common_count=0,
-                hashes=[],
-                note="Нет успешных прогонов"
-            )
-        
-        comparison = compare_hashes(hashes)
-        
-        note = None
-        if comparison["unique_count"] == 1:
-            note = "Все ответы идентичны (100% детерминизм)"
-        elif comparison["match_rate"] >= 0.8:
-            note = "Высокая стабильность (≥80%)"
-        elif comparison["match_rate"] < 0.5:
-            note = "Низкая стабильность (<50%)"
-        
-        return DeterminismResult(
-            total_runs=comparison["total_runs"],
-            unique_responses=comparison["unique_count"],
-            match_rate=comparison["match_rate"],
-            most_common_hash=comparison["most_common_hash"],
-            most_common_count=comparison["most_common_count"],
-            hashes=hashes,
-            note=note
-        )
-    
-    async def run_task(
-        self,
-        task: TaskConfig,
-        model_key: str,
-        category: str
-    ) -> TaskResult:
-        """
-        Выполнить задачу для одной модели
-        """
-        model_config = self.get_model_config(model_key)
-        gen_params = self.get_generation_params(category, model_key)
-        
-        log(f" Задача: {task.name} | Модель: {model_config.name}")
-        
-        # Формируем сообщения
-        system_prompt = self.get_system_prompt(category)
-        messages = [
-            ChatMessage(role="system", content=system_prompt),
-            ChatMessage(role="user", content=task.prompt)
-        ]
-        
-        # Для категории B добавляем контекст метаданных
-        context_loaded = False
-        context_objects = []
-        context_cost = 0.0
-        
-        if category == "B" and self.context_loader:
-            log("  Загрузка контекста метаданных...")
-            context_result = await self.context_loader.load_context(task.prompt)
-            
-            if context_result.success and context_result.context_text:
-                # Добавляем контекст в системный промпт
-                enhanced_system = f"""{system_prompt}
-
-## Контекст метаданных конфигурации:
-{context_result.context_text}"""
-                messages[0] = ChatMessage(role="system", content=enhanced_system)
-                
-                context_loaded = True
-                context_objects = context_result.objects_loaded
-                context_cost = context_result.analysis_cost
-                log(f"  Контекст загружен: {len(context_objects)} объектов")
-        
-        # Выполняем прогоны
-        runs = []
-        
-        if model_config.determinism_param == "seed":
-            # Для GPT/Gemini используем seed из конфига
-            seeds = gen_params["seeds"]
-            temperature = gen_params["temperature"]
-            for i, seed in enumerate(seeds):
-                log(f"  Прогон {i+1} (seed={seed}, temp={temperature})...")
-                run_result = self._run_generation(
-                    model_config, messages, i, 
-                    seed=seed, temperature=temperature
-                )
-                runs.append(run_result)
-                
-                if run_result.success:
-                    log(f"    Хеш: {run_result.response_hash[:16]}... | {run_result.tokens_total} токенов")
-                else:
-                    log(f"    ОШИБКА: {run_result.error}", "ERROR")
-        else:
-            # Для Claude используем temperature (без seed)
-            num_runs = gen_params["runs"]
-            base_temp = gen_params["temperature"]
-            # Первые (n-1) прогонов с базовой температурой, последний с 0.7 для разнообразия
-            temperatures = [base_temp] * (num_runs - 1) + [0.7]
-            for i, temp in enumerate(temperatures):
-                log(f"  Прогон {i+1} (temp={temp})...")
-                run_result = self._run_generation(
-                    model_config, messages, i,
-                    temperature=temp
-                )
-                runs.append(run_result)
-                
-                if run_result.success:
-                    log(f"    Хеш: {run_result.response_hash[:16]}... | {run_result.tokens_total} токенов")
-                else:
-                    log(f"    ОШИБКА: {run_result.error}", "ERROR")
-        
-        # Анализ детерминизма
-        determinism = self._analyze_determinism(runs)
-        
-        # Агрегируем метрики
-        successful_runs = [r for r in runs if r.success]
-        total_tokens = sum(r.tokens_total for r in successful_runs)
-        total_cost = sum(r.cost_total for r in successful_runs) + context_cost
-        avg_time = sum(r.elapsed_time for r in successful_runs) / len(successful_runs) if successful_runs else 0
-        
-        # Логируем результат детерминизма
-        match_pct = determinism.match_percent
-        if match_pct == 100:
-            log(f"   Детерминизм: {match_pct:.0f}% ({determinism.most_common_count}/{determinism.total_runs} идентичных)")
-        elif match_pct >= 67:
-            log(f"   Детерминизм: {match_pct:.0f}% ({determinism.most_common_count}/{determinism.total_runs} идентичных)")
-        else:
-            log(f"   Детерминизм: {match_pct:.0f}% ({determinism.most_common_count}/{determinism.total_runs} идентичных)")
-        
-        return TaskResult(
-            task_id=task.id,
-            task_name=task.name,
-            model_id=model_config.id,
-            model_name=model_config.name,
-            context_loaded=context_loaded,
-            context_objects=context_objects,
-            context_analysis_cost=context_cost,
-            runs=runs,
-            determinism=determinism,
-            total_tokens=total_tokens,
-            total_cost=total_cost,
-            avg_time=avg_time
-        )
+    # =========================================================================
+    # Публичный API — запуск эксперимента
+    # =========================================================================
     
     async def run_experiment(
         self,
         category: str,
-        model_keys: List[str] = None,
-        task_ids: List[str] = None
+        model_keys: Optional[List[str]] = None,
+        task_ids: Optional[List[str]] = None,
     ) -> ExperimentResult:
         """
-        Запустить полный эксперимент
+        Запустить эксперимент
         
-        Аргументы:
+        Args:
             category: Категория задач ("A" или "B")
-            model_keys: Ключи моделей (или все из конфига)
-            task_ids: ID задач (или все из категории)
-        """
-        log_section(f" Запуск эксперимента: Категория {category}")
-        
-        # Определяем модели
-        if model_keys is None:
-            model_keys = list(self.models_config["models"].keys())
-        
-        # Загружаем задачи
-        tasks = self.load_tasks(category)
-        if task_ids:
-            tasks = [t for t in tasks if t.id in task_ids]
-        
-        log(f"Модели: {model_keys}")
-        log(f"Задачи: {[t.id for t in tasks]}")
-        
-        # Запускаем задачи
-        task_results = []
-        
-        for model_key in model_keys:
-            log_section(f"Модель: {model_key}", char="-")
+            model_keys: Ключи моделей (если None — все модели)
+            task_ids: ID задач (если None — все задачи категории)
             
-            for task in tasks:
-                result = await self.run_task(task, model_key, category)
-                task_results.append(result)
+        Returns:
+            ExperimentResult с полными результатами
+            
+        Raises:
+            ValueError: Если категория B требует MCP, но он не инициализирован
+        """
+        print()
+        print("=" * 60)
+        print(f" Запуск эксперимента: Категория {category}")
+        print("=" * 60)
         
-        # Собираем итоги
-        total_tokens = sum(r.total_tokens for r in task_results)
-        total_cost = sum(r.total_cost for r in task_results)
-        total_time = sum(r.avg_time * len(r.runs) for r in task_results)
+        # Загружаем конфигурацию
+        tasks_config = self._load_tasks_config(category)
+        models = self._get_models(model_keys)
+        tasks = self._filter_tasks(tasks_config, task_ids)
         
-        # Имя эксперимента из конфига
-        exp_config = self.experiment_config.get("experiment", {})
-        experiment_name = exp_config.get("name", "AI-1C-Benchmark")
+        runs_per_task = self._get_runs_per_task(models, tasks_config)
+        model_names = ', '.join(m.name for m in models.values())
         
-        experiment = ExperimentResult(
-            experiment_name=experiment_name,
-            category=category,
-            timestamp=datetime.now().isoformat(),
-            models_used=model_keys,
-            tasks_count=len(tasks),
-            runs_per_task=3,
-            task_results=task_results,
-            total_tokens=total_tokens,
-            total_cost=total_cost,
-            total_time=total_time
+        logger.info(
+            f"Запуск эксперимента: категория={category}, "
+            f"модели=[{model_names}], задач={len(tasks)}, прогонов={runs_per_task}"
         )
         
-        # Сохраняем результат
-        self._save_result(experiment)
+        print(f" Модели: {model_names}")
+        print(f" Задач: {len(tasks)}")
+        print(f" Прогонов на задачу: {runs_per_task}")
+        print("=" * 60)
+        print()
         
-        log_section("Эксперимент завершён")
-        log(f"Всего токенов: {total_tokens:,}")
-        log(f"Общая стоимость: ${total_cost:.4f}")
-        log(f"Общее время: {total_time:.1f}с")
+        # Проверяем MCP для категории B
+        if tasks_config.category.requires_mcp and not self.mcp:
+            raise ValueError(
+                f"Категория {category} требует MCP сервер. "
+                "Вызовите await runner.init_mcp() перед запуском."
+            )
+        
+        # Создаём результат эксперимента
+        timestamp = datetime.now().isoformat()
+        experiment = ExperimentResult(
+            experiment_name=f"experiment_{category}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            category=category,
+            timestamp=timestamp,
+            models_used=[m.name for m in models.values()],
+            tasks_count=len(tasks),
+            runs_per_task=self._get_runs_per_task(models, tasks_config),
+        )
+        
+        # Запускаем задачи
+        start_time = datetime.now()
+        total_tasks = len(tasks) * len(models)
+        current_task = 0
+        
+        for task in tasks:
+            for model_key, model in models.items():
+                current_task += 1
+                print(f"[{current_task}/{total_tasks}] {task.id}: {task.name}")
+                print(f"     Модель: {model.name}")
+                
+                logger.info(f"Запуск задачи {task.id} ({task.name}) с моделью {model.name}")
+                
+                task_result = await self._run_task(
+                    task=task,
+                    model=model,
+                    model_key=model_key,
+                    tasks_config=tasks_config,
+                )
+                
+                # Выводим результаты задачи
+                self._print_task_summary(task_result)
+                
+                # Логируем результат задачи
+                det_info = ""
+                if task_result.determinism:
+                    det_info = f", детерминизм={task_result.determinism.match_percent:.0f}%"
+                logger.info(
+                    f"Задача {task.id} завершена: "
+                    f"токенов={task_result.total_tokens}, "
+                    f"стоимость=${task_result.total_cost:.4f}{det_info}"
+                )
+                
+                experiment.task_results.append(task_result)
+        
+        # Подсчитываем итоги
+        experiment.calculate_totals()
+        experiment.total_time = (datetime.now() - start_time).total_seconds()
+        
+        # Сохраняем результаты JSON
+        result_path = self._save_experiment(experiment)
+        logger.info(f"Результаты сохранены: {result_path}")
+        
+        # Экспортируем код в BSL файлы
+        self._export_code(experiment)
+        
+        print()
+        print("=" * 60)
+        print(f" Эксперимент завершён")
+        print(f"    Результаты: {result_path}")
+        print("=" * 60)
+        
+        logger.info(
+            f"Эксперимент {experiment.experiment_name} завершён: "
+            f"задач={len(experiment.task_results)}, "
+            f"токенов={experiment.total_tokens}, "
+            f"стоимость=${experiment.total_cost:.4f}, "
+            f"время={experiment.total_time:.1f}с"
+        )
         
         return experiment
     
-    def _save_result(self, experiment: ExperimentResult):
-        """Сохранить результат эксперимента в JSON"""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"experiment_{experiment.category}_{timestamp}.json"
-        path = self.results_dir / filename
-        
-        # Конвертируем в словарь
-        data = self._to_dict(experiment)
-        
-        save_json(data, path)
-        log(f"Результаты сохранены: {path}")
-        
-        # Экспортируем код в .bsl файлы для удобного просмотра
-        if self.export_code:
-            log(" Экспорт кода в .bsl файлы...")
-            export_result = export_experiment_code(
-                data, 
-                self.code_outputs_dir,
-                include_all_runs=True  # Сохраняем все прогоны для анализа
-            )
-            log(f"   Код экспортирован: {export_result['experiment_dir']}")
-            log(f"   Файлов создано: {export_result['files_count']}")
+    # =========================================================================
+    # Приватные методы — запуск задач
+    # =========================================================================
     
-    def _to_dict(self, obj: Any) -> Any:
-        """Рекурсивно конвертировать dataclass в словарь"""
-        if hasattr(obj, '__dataclass_fields__'):
-            return {k: self._to_dict(v) for k, v in asdict(obj).items()}
-        elif isinstance(obj, list):
-            return [self._to_dict(item) for item in obj]
-        elif isinstance(obj, dict):
-            return {k: self._to_dict(v) for k, v in obj.items()}
-        return obj
+    async def _run_task(
+        self,
+        task: TaskConfig,
+        model: ModelConfig,
+        model_key: str,
+        tasks_config: TasksFile,
+    ) -> TaskResult:
+        """
+        Выполнить одну задачу с несколькими прогонами
+        
+        Args:
+            task: Конфигурация задачи
+            model: Конфигурация модели
+            model_key: Ключ модели (claude, gpt, gemini)
+            tasks_config: Конфигурация категории задач
+            
+        Returns:
+            TaskResult с результатами всех прогонов
+        """
+        result = TaskResult(
+            task_id=task.id,
+            task_name=task.name,
+            model_id=model.id,
+            model_name=model.name,
+        )
+        
+        # Загружаем контекст для категории B
+        context_text = ""
+        if tasks_config.category.requires_mcp and self.context_loader:
+            print(f"     Загрузка контекста...")
+            
+            self.context_loader.reset_metrics()
+            context_result = await self.context_loader.load_context(task.prompt)
+            
+            if context_result.success:
+                context_text = context_result.context_text
+                result.context_loaded = True
+                result.context_objects = context_result.objects_loaded
+                result.context_analysis_cost = context_result.analysis_cost
+                
+                print(f"     Контекст: {context_result.objects_count} объектов, "
+                      f"{_format_cost(context_result.analysis_cost)}")
+        
+        # Формируем сообщения
+        messages = self._build_messages(task, tasks_config, context_text)
+        
+        # Получаем параметры генерации (включая seeds из категории)
+        gen_params = self._get_generation_params(model, model_key, tasks_config)
+        
+        # Определяем количество прогонов и seeds
+        # Приоритет: category params > model params
+        category_seeds = gen_params.get("seeds")
+        category_runs = gen_params.get("runs")
+        
+        if category_seeds:
+            runs_count = len(category_seeds)
+        elif category_runs:
+            runs_count = category_runs
+        else:
+            runs_count = model.runs_count
+        
+        # Запускаем прогоны
+        hashes: List[str] = []
+        
+        for run_index in range(runs_count):
+            # Получаем seed: сначала из категории, потом из модели
+            if category_seeds and run_index < len(category_seeds):
+                seed = category_seeds[run_index]
+            else:
+                seed = model.get_seed_for_run(run_index)
+            
+            run_result = self._execute_run(
+                run_index=run_index,
+                messages=messages,
+                model=model,
+                seed=seed,
+                gen_params=gen_params,
+            )
+            
+            # Лог прогона
+            status = "+" if run_result.success else "x"
+            seed_str = f"seed={seed}" if seed else "no-seed"
+            print(f"     [{status}] Прогон {run_index + 1}: {seed_str}, "
+                  f"{run_result.tokens_total} токенов, {_format_time(run_result.elapsed_time)}")
+            
+            if run_result.error:
+                print(f"       Ошибка: {run_result.error[:60]}...")
+            
+            result.runs.append(run_result)
+            
+            if run_result.success:
+                hashes.append(run_result.response_hash)
+        
+        # Анализ детерминизма
+        if hashes:
+            result.determinism = self._analyze_determinism(hashes)
+        
+        # Пересчёт агрегатов
+        result.calculate_aggregates()
+        
+        return result
+    
+    def _print_task_summary(self, task_result: TaskResult) -> None:
+        """Вывести краткую сводку по задаче"""
+        det_str = ""
+        if task_result.determinism:
+            rate = task_result.determinism.match_rate * 100
+            unique = task_result.determinism.unique_responses
+            det_str = f", детерминизм: {rate:.0f}% ({unique} уник.)"
+        
+        print(f"     Итого: {task_result.total_tokens} токенов, "
+              f"{_format_cost(task_result.total_cost)}{det_str}")
+        print()
+    
+    def _execute_run(
+        self,
+        run_index: int,
+        messages: List[ChatMessage],
+        model: ModelConfig,
+        seed: Optional[int],
+        gen_params: Dict[str, Any],
+    ) -> RunResult:
+        """
+        Выполнить один прогон генерации
+        
+        Args:
+            run_index: Индекс прогона
+            messages: Список сообщений
+            model: Конфигурация модели
+            seed: Seed для детерминизма
+            gen_params: Параметры генерации
+            
+        Returns:
+            RunResult с результатом
+        """
+        temperature = gen_params.get("temperature", model.generation.temperature)
+        max_tokens = gen_params.get("max_tokens", 4096)
+        
+        # Вызываем LLM
+        llm_result = self.llm.chat_completion(
+            model=model.id,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            seed=seed,
+        )
+        
+        # Формируем результат прогона
+        run = RunResult(
+            run_index=run_index,
+            seed=seed,
+            temperature=temperature,
+            success=llm_result.success,
+            response=llm_result.content,
+            tokens_input=llm_result.tokens_input,
+            tokens_output=llm_result.tokens_output,
+            tokens_total=llm_result.tokens_total,
+            elapsed_time=llm_result.elapsed_time,
+            error=llm_result.error,
+        )
+        
+        # Хеш ответа для детерминизма
+        if llm_result.success and llm_result.content:
+            run.response_hash = compute_hash(
+                llm_result.content,
+                normalize=self._settings.hashing.normalize,
+                algorithm=self._settings.hashing.algorithm,
+            )
+        
+        # Расчёт стоимости
+        run.cost_input, run.cost_output, run.cost_total = self._calculate_cost(
+            model, run.tokens_input, run.tokens_output
+        )
+        
+        return run
+    
+    # =========================================================================
+    # Приватные методы — построение сообщений
+    # =========================================================================
+    
+    def _build_messages(
+        self,
+        task: TaskConfig,
+        tasks_config: TasksFile,
+        context_text: str = "",
+    ) -> List[ChatMessage]:
+        """
+        Построить список сообщений для LLM
+        
+        Args:
+            task: Задача
+            tasks_config: Конфигурация категории
+            context_text: Контекст метаданных (для категории B)
+            
+        Returns:
+            Список ChatMessage
+        """
+        # Системный промпт
+        system_content = tasks_config.system_prompt
+        
+        # Добавляем контекст если есть
+        if context_text:
+            system_content = f"{system_content}\n\n# Доступные метаданные:\n{context_text}"
+        
+        messages = [
+            ChatMessage.system(system_content),
+            ChatMessage.user(task.prompt),
+        ]
+        
+        return messages
+    
+    # =========================================================================
+    # Приватные методы — анализ
+    # =========================================================================
+    
+    def _analyze_determinism(self, hashes: List[str]) -> DeterminismResult:
+        """
+        Проанализировать детерминизм ответов
+        
+        Args:
+            hashes: Список хешей ответов
+            
+        Returns:
+            DeterminismResult с анализом
+        """
+        stats = compare_hashes(hashes)
+        
+        return DeterminismResult(
+            total_runs=stats["total_runs"],
+            unique_responses=stats["unique_count"],
+            match_rate=stats["match_rate"],
+            most_common_hash=stats["most_common_hash"],
+            most_common_count=stats["most_common_count"],
+            hashes=hashes,
+        )
+    
+    def _calculate_cost(
+        self,
+        model: ModelConfig,
+        tokens_input: int,
+        tokens_output: int,
+    ) -> tuple[float, float, float]:
+        """
+        Рассчитать стоимость запроса
+        
+        Args:
+            model: Конфигурация модели
+            tokens_input: Входные токены
+            tokens_output: Выходные токены
+            
+        Returns:
+            Кортеж (cost_input, cost_output, cost_total)
+        """
+        # Цены указаны за 1M токенов
+        cost_input = (tokens_input / 1_000_000) * model.meta.price_input
+        cost_output = (tokens_output / 1_000_000) * model.meta.price_output
+        cost_total = cost_input + cost_output
+        
+        return cost_input, cost_output, cost_total
+    
+    # =========================================================================
+    # Приватные методы — конфигурация
+    # =========================================================================
+    
+    def _load_models_registry(self) -> ModelsRegistry:
+        """Загрузить реестр моделей"""
+        if self._models_registry is not None:
+            return self._models_registry
+        
+        models_path = self.config_dir / "models.yaml"
+        raw_data = load_yaml(models_path)
+        
+        self._models_registry = ModelsRegistry(models=raw_data.get("models", {}))
+        return self._models_registry
+    
+    def _load_tasks_config(self, category: str) -> TasksFile:
+        """Загрузить конфигурацию задач категории"""
+        if category in self._tasks_cache:
+            return self._tasks_cache[category]
+        
+        tasks_path = self.config_dir / f"tasks_category_{category}.yaml"
+        raw_data = load_yaml(tasks_path)
+        
+        tasks_config = TasksFile(**raw_data)
+        self._tasks_cache[category] = tasks_config
+        
+        return tasks_config
+    
+    def _get_models(
+        self, 
+        model_keys: Optional[List[str]] = None
+    ) -> Dict[str, ModelConfig]:
+        """
+        Получить модели для эксперимента
+        
+        Args:
+            model_keys: Ключи моделей (если None — все)
+            
+        Returns:
+            Словарь {key: ModelConfig}
+        """
+        registry = self._load_models_registry()
+        
+        if model_keys is None:
+            return dict(registry)
+        
+        result = {}
+        for key in model_keys:
+            model = registry.get(key)
+            if model:
+                result[key] = model
+            else:
+                logger.warning(f"Модель '{key}' не найдена в реестре")
+        
+        return result
+    
+    def _filter_tasks(
+        self,
+        tasks_config: TasksFile,
+        task_ids: Optional[List[str]] = None,
+    ) -> List[TaskConfig]:
+        """
+        Отфильтровать задачи
+        
+        Args:
+            tasks_config: Конфигурация категории
+            task_ids: ID задач (если None — все)
+            
+        Returns:
+            Список TaskConfig
+        """
+        if task_ids is None:
+            return tasks_config.tasks
+        
+        return [t for t in tasks_config.tasks if t.id in task_ids]
+    
+    def _get_generation_params(
+        self,
+        model: ModelConfig,
+        model_key: str,
+        tasks_config: TasksFile,
+    ) -> Dict[str, Any]:
+        """
+        Получить параметры генерации для модели
+        
+        Приоритет: category config > model config > defaults
+        
+        Args:
+            model: Конфигурация модели
+            model_key: Ключ модели
+            tasks_config: Конфигурация категории
+            
+        Returns:
+            Словарь параметров
+        """
+        params = {
+            "temperature": model.generation.temperature,
+            "max_tokens": 4096,
+        }
+        
+        # Переопределения из категории
+        if tasks_config.generation.max_tokens:
+            params["max_tokens"] = tasks_config.generation.max_tokens
+        
+        category_params = tasks_config.generation.get_model_params(model_key)
+        params.update(category_params)
+        
+        return params
+    
+    def _get_runs_per_task(
+        self, 
+        models: Dict[str, ModelConfig],
+        tasks_config: Optional[TasksFile] = None,
+    ) -> int:
+        """
+        Получить количество прогонов на задачу
+        
+        Учитывает параметры категории (seeds/runs) если они заданы.
+        
+        Args:
+            models: Словарь моделей
+            tasks_config: Конфигурация категории (опционально)
+            
+        Returns:
+            Максимальное количество прогонов среди моделей
+        """
+        if not models:
+            return 0
+        
+        max_runs = 0
+        for model_key, model in models.items():
+            # Проверяем параметры категории для модели
+            if tasks_config:
+                category_params = tasks_config.generation.get_model_params(model_key)
+                category_seeds = category_params.get("seeds")
+                category_runs = category_params.get("runs")
+                
+                if category_seeds:
+                    runs = len(category_seeds)
+                elif category_runs:
+                    runs = category_runs
+                else:
+                    runs = model.runs_count
+            else:
+                runs = model.runs_count
+            
+            max_runs = max(max_runs, runs)
+        
+        return max_runs
+    
+    # =========================================================================
+    # Приватные методы — сохранение и экспорт
+    # =========================================================================
+    
+    def _save_experiment(self, experiment: ExperimentResult) -> Path:
+        """
+        Сохранить результаты эксперимента в JSON
+        
+        Args:
+            experiment: Результат эксперимента
+            
+        Returns:
+            Путь к сохранённому файлу
+        """
+        ensure_dir(self.results_dir)
+        
+        filename = f"{experiment.experiment_name}.json"
+        filepath = self.results_dir / filename
+        
+        save_json(experiment.model_dump(), filepath)
+        
+        return filepath
+    
+    def _export_code(self, experiment: ExperimentResult) -> None:
+        """
+        Экспортировать сгенерированный код в BSL файлы
+        
+        Args:
+            experiment: Результат эксперимента
+        """
+        if not self._settings.export.code_to_bsl:
+            return
+        
+        output_dir = Path(self._settings.paths.code_outputs_dir)
+        
+        try:
+            result = export_experiment_code(
+                experiment_data=experiment.model_dump(),
+                output_dir=output_dir,
+                include_all_runs=True  # Сохраняем все прогоны для анализа детерминизма
+            )
+            
+            print(f"     Код экспортирован: {result['files_count']} файлов")
+            print(f"        {result['experiment_dir']}")
+            
+        except Exception as e:
+            logger.warning(f"Ошибка экспорта кода: {e}")
