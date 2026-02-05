@@ -118,7 +118,7 @@ class AgenticContextLoader:
                 }
             }
             openai_tools.append(openai_tool)
-            print(f"  📦 Инструмент: {tool.get('name')}")
+            print(f"   Инструмент: {tool.get('name')}")
         
         # Добавляем finish_research tool
         openai_tools.append(FINISH_TOOL)
@@ -133,7 +133,7 @@ class AgenticContextLoader:
         # finish_research обрабатываем локально
         if name == "finish_research":
             summary = arguments.get("summary", "")
-            print(f"  ✅ Исследование завершено: {summary[:100]}...")
+            print(f"   Исследование завершено: {summary[:100]}...")
             return "DONE"
         
         # Все остальные tools — через MCP
