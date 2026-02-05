@@ -35,12 +35,15 @@ class PathsConfig(BaseModel):
     code_outputs_dir: str = "code_outputs"
     logs_dir: str = "logs"
     cache_dir: str = "cache"
+    evaluations_dir: str = "evaluations"
+    reports_dir: str = "reports"
     
     # Файлы конфигов (относительно configs_dir)
     experiment_file: str = "experiment.yaml"
     models_file: str = "models.yaml"
     tasks_category_a: str = "tasks_category_A.yaml"
     tasks_category_b: str = "tasks_category_B.yaml"
+    smop_criteria_file: str = "smop_criteria.yaml"
     
     def get_models_path(self) -> Path:
         """Полный путь к models.yaml"""
@@ -54,6 +57,10 @@ class PathsConfig(BaseModel):
     def get_experiment_path(self) -> Path:
         """Полный путь к experiment.yaml"""
         return Path(self.configs_dir) / self.experiment_file
+    
+    def get_smop_criteria_path(self) -> Path:
+        """Полный путь к smop_criteria.yaml"""
+        return Path(self.configs_dir) / self.smop_criteria_file
 
 
 class OpenRouterConfig(BaseModel):
@@ -91,6 +98,15 @@ class AgentConfig(BaseModel):
     max_context_lines: int = 80
     cache: AgentCacheConfig = Field(default_factory=AgentCacheConfig)
     prompts: AgentPromptsConfig = Field(default_factory=AgentPromptsConfig)
+
+
+class EvaluatorConfig(BaseModel):
+    """Настройки модуля оценки SMOP"""
+    autosave_interval: int = 30  # секунд
+    default_evaluator_id: str = "expert_01"
+    quality_thresholds: Dict[str, float] = Field(
+        default_factory=lambda: {"high": 8.0, "acceptable": 5.0, "low": 0.0}
+    )
 
 
 class HashingConfig(BaseModel):
@@ -163,6 +179,7 @@ class Settings(BaseSettings):
     openrouter: OpenRouterConfig = Field(default_factory=OpenRouterConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
+    evaluator: EvaluatorConfig = Field(default_factory=EvaluatorConfig)
     hashing: HashingConfig = Field(default_factory=HashingConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     export: ExportConfig = Field(default_factory=ExportConfig)
