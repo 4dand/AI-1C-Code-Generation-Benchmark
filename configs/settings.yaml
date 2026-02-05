@@ -83,7 +83,7 @@ logging:
   format: "[%(asctime)s] [%(levelname)s] %(name)s: %(message)s"
   date_format: "%Y-%m-%d %H:%M:%S"
   console:
-    enabled: true
+    enabled: false
     level: "INFO"
     colorize: true
   file:
