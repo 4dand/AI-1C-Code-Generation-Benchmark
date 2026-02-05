@@ -1,36 +1,60 @@
 """
-Data Schemas - структуры данных для бенчмарка
+Data Schemas - схемы данных для бенчмарка
+
+Экспортирует все схемы из подмодулей:
+- models: ModelConfig, ModelsRegistry
+- tasks: TaskConfig, CategoryConfig, TasksFile
+- messages: ChatMessage, GenerationResult, ToolCall
+- results: RunResult, TaskResult, ExperimentResult, DeterminismResult, ContextLoadResult
 """
 
-from .config import (
+from .models import (
     ModelConfig,
+    ModelMeta,
+    ModelGenerationParams,
+    ModelsRegistry,
+)
+
+from .tasks import (
     TaskConfig,
-    GenerationParams,
-    ExperimentConfig,
-    MCPConfig,
+    CategoryConfig,
+    CategoryGenerationOverrides,
+    TasksFile,
+)
+
+from .messages import (
+    ChatMessage,
+    GenerationResult,
+    ToolCall,
 )
 
 from .results import (
-    ChatMessage,
-    GenerationResult,
     RunResult,
     TaskResult,
     ExperimentResult,
+    DeterminismResult,
     ContextLoadResult,
 )
 
 __all__ = [
-    # Config schemas
+    # Models
     "ModelConfig",
-    "TaskConfig", 
-    "GenerationParams",
-    "ExperimentConfig",
-    "MCPConfig",
-    # Result schemas
+    "ModelMeta",
+    "ModelGenerationParams",
+    "ModelsRegistry",
+    # Tasks
+    "TaskConfig",
+    "CategoryConfig",
+    "CategoryGenerationOverrides",
+    "TasksFile",
+    # Messages
     "ChatMessage",
     "GenerationResult",
+    "ToolCall",
+    # Results
     "RunResult",
     "TaskResult",
     "ExperimentResult",
+    "DeterminismResult",
     "ContextLoadResult",
 ]

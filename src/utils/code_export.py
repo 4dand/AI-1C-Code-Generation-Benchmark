@@ -179,13 +179,6 @@ def export_experiment_code(
                 f.write(summary)
             exported_files.append(str(summary_path))
     
-    # создаем общий README для эксперимента
-    readme_content = create_experiment_readme(experiment_data)
-    readme_path = experiment_dir / "README.md"
-    with open(readme_path, 'w', encoding='utf-8') as f:
-        f.write(readme_content)
-    exported_files.append(str(readme_path))
-    
     return {
         "experiment_dir": str(experiment_dir),
         "files_count": len(exported_files),
@@ -237,52 +230,6 @@ def create_task_summary(task_result: Dict[str, Any], timestamp: str) -> str:
     lines.append(f"Всего токенов: {task_result.get('total_tokens', 0):,}")
     lines.append(f"Общая стоимость: ${task_result.get('total_cost', 0):.6f}")
     lines.append(f"Среднее время: {task_result.get('avg_time', 0):.2f} сек")
-    
-    return "\n".join(lines)
-
-
-def create_experiment_readme(experiment_data: Dict[str, Any]) -> str:
-    """Создать README для эксперимента"""
-    lines = []
-    lines.append(f"# Эксперимент: {experiment_data.get('experiment_name', 'Без названия')}")
-    lines.append("")
-    lines.append(f"**Категория:** {experiment_data.get('category', 'X')}")
-    lines.append(f"**Дата:** {experiment_data.get('timestamp', 'N/A')}")
-    lines.append("")
-    
-    lines.append("## Конфигурация")
-    lines.append("")
-    lines.append(f"- Модели: {', '.join(experiment_data.get('models_used', []))}")
-    lines.append(f"- Задач: {experiment_data.get('tasks_count', 0)}")
-    lines.append(f"- Прогонов на задачу: {experiment_data.get('runs_per_task', 0)}")
-    lines.append("")
-    
-    lines.append("## Итоги")
-    lines.append("")
-    lines.append(f"- **Токенов:** {experiment_data.get('total_tokens', 0):,}")
-    lines.append(f"- **Стоимость:** ${experiment_data.get('total_cost', 0):.6f}")
-    lines.append(f"- **Время:** {experiment_data.get('total_time', 0):.1f} сек")
-    lines.append("")
-    
-    lines.append("## Задачи")
-    lines.append("")
-    
-    for task in experiment_data.get("task_results", []):
-        task_id = task.get("task_id", "?")
-        task_name = task.get("task_name", "Без названия")
-        det = task.get("determinism", {})
-        is_det = det.get("is_deterministic", False)
-        det_symbol = "Да" if is_det else "Нет"
-        
-        lines.append(f"### {task_id}: {task_name}")
-        lines.append("")
-        lines.append(f"- Детерминизм: {det_symbol}")
-        lines.append(f"- Токенов: {task.get('total_tokens', 0):,}")
-        lines.append(f"- Стоимость: ${task.get('total_cost', 0):.6f}")
-        lines.append("")
-    
-    lines.append("---")
-    lines.append("*Сгенерировано AI-1C-Code-Generation-Benchmark*")
     
     return "\n".join(lines)
 
