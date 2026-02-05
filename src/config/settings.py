@@ -94,8 +94,10 @@ class AgentPromptsConfig(BaseModel):
 class AgentConfig(BaseModel):
     """Настройки агента контекста"""
     model: str = "google/gemini-2.0-flash-001"
-    max_iterations: int = 10
-    max_context_lines: int = 80
+    max_iterations: int = 5
+    max_context_lines: int = 50
+    max_total_context_chars: int = 15000  # Лимит общего контекста в символах
+    max_objects: int = 3  # Максимум объектов метаданных
     cache: AgentCacheConfig = Field(default_factory=AgentCacheConfig)
     prompts: AgentPromptsConfig = Field(default_factory=AgentPromptsConfig)
 

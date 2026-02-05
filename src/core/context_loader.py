@@ -146,6 +146,8 @@ class AgenticContextLoader:
                 print(result.context_text)
         """
         max_iter = max_iterations or self._settings.agent.max_iterations
+        max_objects = getattr(self._settings.agent, 'max_objects', 3)
+        max_context_chars = getattr(self._settings.agent, 'max_total_context_chars', 15000)
         
         logger.info("Запуск агента сбора контекста...")
         
@@ -222,6 +224,31 @@ class AgenticContextLoader:
                             "type": tool_args.get("meta_type", tool_args.get("metaType", "")),
                             "name": tool_args.get("name", "")
                         })
+                        
+                        # Проверяем лимит объектов
+                        if len(loaded_objects) >= max_objects:
+                            logger.info(f"Достигнут лимит объектов ({max_objects}), завершаю")
+                            return ContextLoadResult(
+                                success=True,
+                                context_text="\n\n---\n\n".join(collected_context),
+                                objects_loaded=loaded_objects,
+                                analysis_tokens=self.total_tokens,
+                                analysis_cost=self.total_cost,
+                                iterations_count=iteration + 1
+                            )
+                        
+                        # Проверяем лимит размера контекста
+                        total_chars = sum(len(c) for c in collected_context)
+                        if total_chars >= max_context_chars:
+                            logger.info(f"Достигнут лимит контекста ({total_chars} символов), завершаю")
+                            return ContextLoadResult(
+                                success=True,
+                                context_text="\n\n---\n\n".join(collected_context),
+                                objects_loaded=loaded_objects,
+                                analysis_tokens=self.total_tokens,
+                                analysis_cost=self.total_cost,
+                                iterations_count=iteration + 1
+                            )
                     
                     # Добавляем assistant message с tool_call
                     messages.append(ChatMessage.assistant(
