@@ -597,7 +597,7 @@ class BenchmarkRunner:
         registry = self._load_models_registry()
         
         if model_keys is None:
-            return dict(registry)
+            return registry.models.copy()
         
         result = {}
         for key in model_keys:
