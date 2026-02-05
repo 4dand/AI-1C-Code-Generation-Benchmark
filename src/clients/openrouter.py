@@ -141,7 +141,8 @@ class OpenRouterClient:
             request_body["tools"] = tools
             request_body["tool_choice"] = tool_choice
         
-        logger.debug(f"Запрос к {model}, сообщений={len(messages)}, температура={temperature}")
+        seed_str = f", seed={seed}" if seed else ""
+        logger.info(f"Запрос к {model}: сообщений={len(messages)}, temp={temperature}{seed_str}")
         
         start_time = time.time()
         
@@ -155,7 +156,9 @@ class OpenRouterClient:
             elapsed = time.time() - start_time
             
             if response.status_code == 200:
-                return self._parse_success_response(response.json(), model, elapsed)
+                result = self._parse_success_response(response.json(), model, elapsed)
+                logger.info(f"Ответ от {model}: {result.tokens_total} токенов, {elapsed:.2f}с")
+                return result
             else:
                 return self._parse_error_response(response, elapsed)
                 
