@@ -1,0 +1,701 @@
+{
+  "experiment_id": "experiment_A_20260205_232949",
+  "evaluator_id": "expert_01",
+  "framework_version": "1.0.0",
+  "started_at": "2026-02-05T23:43:05.006757",
+  "completed_at": null,
+  "last_modified_at": "2026-02-06T00:59:36.009235",
+  "tasks": [
+    {
+      "task_id": "A1",
+      "model_id": "anthropic/claude-opus-4.5",
+      "model_name": "Claude Opus 4.5",
+      "runs": [
+        {
+          "run_index": 0,
+          "response_hash": "01b5d488ef66607c2a7c654ad1f4f6e1",
+          "scores": {
+            "S": 10,
+            "M": 10,
+            "O": 6,
+            "P": 10,
+            "Q": 9.0
+          },
+          "comment": "нет проверки входных параметров, предпочтительно использовать СортироватьПоЗначению()",
+          "evaluated_at": "2026-02-06T00:01:52.232583"
+        },
+        {
+          "run_index": 1,
+          "response_hash": "a59088de4b6339ceacfde17ae91cb813",
+          "scores": {
+            "S": 4,
+            "M": 6,
+            "O": 6,
+            "P": 10,
+            "Q": 6.5
+          },
+          "comment": "ошибки - Результат[к] (3 раза), Для к = 0, - 2 - и Цикл",
+          "evaluated_at": "2026-02-06T00:06:45.113197"
+        },
+        {
+          "run_index": 2,
+          "response_hash": "01b5d488ef66607c2a7c654ad1f4f6e1",
+          "scores": {
+            "S": 10,
+            "M": 10,
+            "O": 6,
+            "P": 10,
+            "Q": 9.0
+          },
+          "comment": "хеш 1-ого прогона",
+          "evaluated_at": "2026-02-06T00:07:47.317760"
+        }
+      ]
+    },
+    {
+      "task_id": "A1",
+      "model_id": "openai/gpt-5.2-codex",
+      "model_name": "GPT-5.2 Codex",
+      "runs": [
+        {
+          "run_index": 0,
+          "response_hash": "50487fc6318003dc8e0a287265647738",
+          "scores": {
+            "S": 10,
+            "M": 6,
+            "O": 6,
+            "P": 10,
+            "Q": 8.0
+          },
+          "comment": "Не обработан краевой случай (пустой массив / 1 элемент — цикл с отрицательной границей). Нет раннего выхода. Работает, но: Результат.Количество() вызывается в каждой итерации вместо кэширования. Нет флага БылОбмен. Лучше использовать СписокЗначений.СортироватьПоЗначению().",
+          "evaluated_at": "2026-02-06T00:11:28.153774"
+        },
+        {
+          "run_index": 1,
+          "response_hash": "db162d8709a9b9c6b6bcc4ec7c320ac4",
+          "scores": {
+            "S": 4,
+            "M": 8,
+            "O": 8,
+            "P": 10,
+            "Q": 7.5
+          },
+          "comment": "4 ошибки: кириллическая И — это оператор AND, не переменная. Также Возврат Р вместо Возврат Результат.",
+          "evaluated_at": "2026-02-06T00:14:17.375978"
+        },
+        {
+          "run_index": 2,
+          "response_hash": "03e96006bba20a8e5573ebce7fe8ef18",
+          "scores": {
+            "S": 10,
+            "M": 6,
+            "O": 4,
+            "P": 10,
+            "Q": 7.5
+          },
+          "comment": "Результат.Количество() вызывается на каждой итерации обоих циклов — O(n²) лишних вызовов. Нет кэширования, нет флага БылОбмен. Алгоритм верен. Не обработан краевой случай (≤1 элемента). Нет раннего выхода.",
+          "evaluated_at": "2026-02-06T00:16:11.821558"
+        }
+      ]
+    },
+    {
+      "task_id": "A1",
+      "model_id": "google/gemini-3-flash-preview",
+      "model_name": "Gemini 3 Flash",
+      "runs": [
+        {
+          "run_index": 0,
+          "response_hash": "6a6c8288f34acb60c87e7429d3af6d4f",
+          "scores": {
+            "S": 6,
+            "M": 6,
+            "O": 8,
+            "P": 10,
+            "Q": 7.5
+          },
+          "comment": "2 ошибки: кириллическая и — оператор AND (нужно заменить в 2 местах: объявление и использование в выражении). Алгоритм верен. Не обработан краевой случай (≤1 элемента). Нет раннего выхода",
+          "evaluated_at": "2026-02-06T00:20:21.606001"
+        },
+        {
+          "run_index": 1,
+          "response_hash": "723679a8f296d823922d5241018ff990",
+          "scores": {
+            "S": 6,
+            "M": 6,
+            "O": 8,
+            "P": 10,
+            "Q": 7.5
+          },
+          "comment": "2 очевидных ошибки: кириллическая и — оператор AND. Замена на Инд или латинскую i решает проблему. Алгоритм верен. Не обработан краевой случай (≤1 элемента). Нет раннего выхода. Количество закэшировано. Использован Знач. Нет флага БылОбмен, но приемлемо.",
+          "evaluated_at": "2026-02-06T00:36:00.779361"
+        },
+        {
+          "run_index": 2,
+          "response_hash": "6a6c8288f34acb60c87e7429d3af6d4f",
+          "scores": {
+            "S": 6,
+            "M": 6,
+            "O": 8,
+            "P": 10,
+            "Q": 7.5
+          },
+          "comment": "хеш 1-ого прогона",
+          "evaluated_at": "2026-02-06T00:36:42.049597"
+        }
+      ]
+    },
+    {
+      "task_id": "A2",
+      "model_id": "anthropic/claude-opus-4.5",
+      "model_name": "Claude Opus 4.5",
+      "runs": [
+        {
+          "run_index": 0,
+          "response_hash": "7e05ba23fcb26bfefc26b6deb9558eee",
+          "scores": {
+            "S": 10,
+            "M": 8,
+            "O": 8,
+            "P": 10,
+            "Q": 9.0
+          },
+          "comment": "Логика верна, краевые случаи обработаны. Минус: не учтены двойные фамилии (через дефис) и ФИО из 4+ частей (например, «Иванов Петров Сидор Иванович»). Код читаем и структурирован. Небольшое замечание: цикл замены пробелов можно заменить на СтрСоединить(СтрРазделить(...)), но это некритично.",
+          "evaluated_at": "2026-02-06T00:42:08.095146"
+        },
+        {
+          "run_index": 1,
+          "response_hash": "24c3ee4bd89fab5cfbddcfe30a82f04c",
+          "scores": {
+            "S": 10,
+            "M": 8,
+            "O": 8,
+            "P": 10,
+            "Q": 9.0
+          },
+          "comment": "Логика верна, краевые случаи обработаны. Минус: не учтены двойные фамилии (через дефис) и ФИО из 4+ частей (например, «Иванов Петров Сидор Иванович»). Код читаем и структурирован. Небольшое замечание: цикл замены пробелов можно заменить на СтрСоединить(СтрРазделить(...)), но это некритично.",
+          "evaluated_at": "2026-02-06T00:45:13.216808"
+        },
+        {
+          "run_index": 2,
+          "response_hash": "a65e5caba91174ab21bdb0caa1fc8b4c",
+          "scores": {
+            "S": 10,
+            "M": 8,
+            "O": 8,
+            "P": 10,
+            "Q": 9.0
+          },
+          "comment": "Код читаем и структурирован. Небольшое замечание: цикл замены пробелов можно заменить на СтрСоединить(СтрРазделить(...)), но это некритично. Логика верна, краевые случаи обработаны. Минус: не учтены двойные фамилии (через дефис) и ФИО из 4+ частей (например, «Иванов Петров Сидор Иванович»).",
+          "evaluated_at": "2026-02-06T00:47:09.913431"
+        }
+      ]
+    },
+    {
+      "task_id": "A2",
+      "model_id": "openai/gpt-5.2-codex",
+      "model_name": "GPT-5.2 Codex",
+      "runs": [
+        {
+          "run_index": 0,
+          "response_hash": "6c0e62b5c7f2326f8a11f019b00cc3c8",
+          "scores": {
+            "S": 10,
+            "M": 8,
+            "O": 8,
+            "P": 10,
+            "Q": 9.0
+          },
+          "comment": "Логика верна, пустые строки обработаны. Минус: изменяется входной параметр ФИО (нет Знач), не учтены ФИО из 4+ частей.",
+          "evaluated_at": "2026-02-06T00:50:28.607139"
+        },
+        {
+          "run_index": 1,
+          "response_hash": "6a01d361db8fbeb80f3c1d2e229d5d2f",
+          "scores": {
+            "S": 8,
+            "M": 8,
+            "O": 10,
+            "P": 8,
+            "Q": 8.5
+          },
+          "comment": "1 ошибка: СтрРазделить имеет 3 параметра, передано 4. Лишняя запятая перед Истина. Логика верна, краевые случаи обработаны. Минус: не учтены ФИО из 4+ частей. Ошибка в сигнатуре СтрРазделить. Правильно: СтрРазделить(Строка, Разделитель, ВключатьПустые) — 3 параметра.",
+          "evaluated_at": "2026-02-06T00:55:44.567264"
+        },
+        {
+          "run_index": 2,
+          "response_hash": "6df0db2aa19641e66afac9f76057db00",
+          "scores": {
+            "S": 4,
+            "M": 8,
+            "O": 8,
+            "P": 10,
+            "Q": 7.5
+          },
+          "comment": "3 ошибки: однострочные Если ... Тогда без КонецЕсли недопустимы в 1С. Также изменяется входной параметр без Знач. Логика верна, пустые строки обработаны. Минус: не учтены ФИО из 4+ частей. Компактный код, возврат структуры в одну строку — элегантно. Цикл фильтрации можно заменить на СтрРазделить(..., Ложь).",
+          "evaluated_at": "2026-02-06T00:59:34.706812"
+        }
+      ]
+    },
+    {
+      "task_id": "A2",
+      "model_id": "google/gemini-3-flash-preview",
+      "model_name": "Gemini 3 Flash",
+      "runs": [
+        {
+          "run_index": 0,
+          "response_hash": "a0aa4f0aaa8e72dccdebef04634ce331",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        },
+        {
+          "run_index": 1,
+          "response_hash": "a0aa4f0aaa8e72dccdebef04634ce331",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        },
+        {
+          "run_index": 2,
+          "response_hash": "a0aa4f0aaa8e72dccdebef04634ce331",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        }
+      ]
+    },
+    {
+      "task_id": "A3",
+      "model_id": "anthropic/claude-opus-4.5",
+      "model_name": "Claude Opus 4.5",
+      "runs": [
+        {
+          "run_index": 0,
+          "response_hash": "290c654d37b8b10048976ccb73b6ba68",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        },
+        {
+          "run_index": 1,
+          "response_hash": "fd4bd2e6daf9201e90c0b173f193a7df",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        },
+        {
+          "run_index": 2,
+          "response_hash": "290c654d37b8b10048976ccb73b6ba68",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        }
+      ]
+    },
+    {
+      "task_id": "A3",
+      "model_id": "openai/gpt-5.2-codex",
+      "model_name": "GPT-5.2 Codex",
+      "runs": [
+        {
+          "run_index": 0,
+          "response_hash": "cde04ce08a0e047a411f4f7540f6c536",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        },
+        {
+          "run_index": 1,
+          "response_hash": "c6c91ff5654eb2d7bb56d7cdca910922",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        },
+        {
+          "run_index": 2,
+          "response_hash": "23b710a9071df8a452f03b0a646eb033",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        }
+      ]
+    },
+    {
+      "task_id": "A3",
+      "model_id": "google/gemini-3-flash-preview",
+      "model_name": "Gemini 3 Flash",
+      "runs": [
+        {
+          "run_index": 0,
+          "response_hash": "f2be03f386a612f1ffa18001006f0366",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        },
+        {
+          "run_index": 1,
+          "response_hash": "f2be03f386a612f1ffa18001006f0366",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        },
+        {
+          "run_index": 2,
+          "response_hash": "6d3ec0b732f1fe23286da7d2df7da5c6",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        }
+      ]
+    },
+    {
+      "task_id": "A4",
+      "model_id": "anthropic/claude-opus-4.5",
+      "model_name": "Claude Opus 4.5",
+      "runs": [
+        {
+          "run_index": 0,
+          "response_hash": "be669555991c4b2c4dcbe517b00c0192",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        },
+        {
+          "run_index": 1,
+          "response_hash": "8b129950bba178380938b46d23814be8",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        },
+        {
+          "run_index": 2,
+          "response_hash": "deff6bd9f2f1eb4e1195618485fc905a",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        }
+      ]
+    },
+    {
+      "task_id": "A4",
+      "model_id": "openai/gpt-5.2-codex",
+      "model_name": "GPT-5.2 Codex",
+      "runs": [
+        {
+          "run_index": 0,
+          "response_hash": "d82dde45d17a00114255925c432c03f8",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        },
+        {
+          "run_index": 1,
+          "response_hash": "",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        },
+        {
+          "run_index": 2,
+          "response_hash": "",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        }
+      ]
+    },
+    {
+      "task_id": "A4",
+      "model_id": "google/gemini-3-flash-preview",
+      "model_name": "Gemini 3 Flash",
+      "runs": [
+        {
+          "run_index": 0,
+          "response_hash": "aac5e668552b02f7cf327c6e884ea782",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        },
+        {
+          "run_index": 1,
+          "response_hash": "aac5e668552b02f7cf327c6e884ea782",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        },
+        {
+          "run_index": 2,
+          "response_hash": "aac5e668552b02f7cf327c6e884ea782",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        }
+      ]
+    },
+    {
+      "task_id": "A5",
+      "model_id": "anthropic/claude-opus-4.5",
+      "model_name": "Claude Opus 4.5",
+      "runs": [
+        {
+          "run_index": 0,
+          "response_hash": "f057334c5fdda186e002cfffa4bf717f",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        },
+        {
+          "run_index": 1,
+          "response_hash": "6ce5a9484100c55ccb2f0d991ea10e5e",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        },
+        {
+          "run_index": 2,
+          "response_hash": "f057334c5fdda186e002cfffa4bf717f",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        }
+      ]
+    },
+    {
+      "task_id": "A5",
+      "model_id": "openai/gpt-5.2-codex",
+      "model_name": "GPT-5.2 Codex",
+      "runs": [
+        {
+          "run_index": 0,
+          "response_hash": "b167e28624185e0cc49a48b660a01bc9",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        },
+        {
+          "run_index": 1,
+          "response_hash": "61d78580733201df90b0edc2b1433e4a",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        },
+        {
+          "run_index": 2,
+          "response_hash": "3af7a263885005e3bf0a8bd9a88077d5",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        }
+      ]
+    },
+    {
+      "task_id": "A5",
+      "model_id": "google/gemini-3-flash-preview",
+      "model_name": "Gemini 3 Flash",
+      "runs": [
+        {
+          "run_index": 0,
+          "response_hash": "74f311051cd7aa2537d821417ffdf017",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        },
+        {
+          "run_index": 1,
+          "response_hash": "74f311051cd7aa2537d821417ffdf017",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        },
+        {
+          "run_index": 2,
+          "response_hash": "74f311051cd7aa2537d821417ffdf017",
+          "scores": {
+            "S": null,
+            "M": null,
+            "O": null,
+            "P": null,
+            "Q": null
+          },
+          "comment": "",
+          "evaluated_at": null
+        }
+      ]
+    }
+  ],
+  "status": "in_progress"
+}
