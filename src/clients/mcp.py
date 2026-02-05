@@ -1,6 +1,5 @@
 """
-MCP Client - клиент для работы с MCP сервером 1С (vladimir-kharin/1c_mcp)
-
+MCP Client - клиент для работы с прокси MCP сервером 1С (vladimir-kharin/1c_mcp)
 Поддерживает Streamable HTTP транспорт для Docker-развёртывания.
 
 Tools:
@@ -118,8 +117,6 @@ class MCPClient:
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream"
         }
-        
-        # Добавляем session ID если есть
         if self._session_id:
             headers["Mcp-Session-Id"] = self._session_id
         
@@ -130,8 +127,6 @@ class MCPClient:
                 headers=headers,
                 timeout=self.config.timeout
             )
-            
-            # Извлекаем session ID из заголовков
             if expect_session and "mcp-session-id" in response.headers:
                 self._session_id = response.headers["mcp-session-id"]
             
