@@ -111,9 +111,10 @@ def export_experiment_code(
         model_id = task_result.get("model_id", "unknown_model")
         model_name = task_result.get("model_name", "Unknown Model")
         
-        # создаем папку для задачи
+        # создаем папку для задачи с учётом модели
         task_folder_name = f"{task_id}_{sanitize_filename(task_name)}"
-        task_dir = experiment_dir / task_folder_name
+        model_folder_name = sanitize_filename(model_name)
+        task_dir = experiment_dir / task_folder_name / model_folder_name
         runs = task_result.get("runs", [])
         
         if include_all_runs:
