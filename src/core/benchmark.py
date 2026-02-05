@@ -152,7 +152,8 @@ class BenchmarkRunner:
         self.context_loader = SmartContextLoader(
             mcp_client=self.mcp,
             llm_client=self.llm,
-            analysis_model=self.models_config.get("analysis_model", "google/gemini-2.0-flash-001")
+            analysis_model=self.models_config.get("analysis_model", "google/gemini-2.0-flash-001"),
+            config_dir=str(self.config_dir)
         )
     
     async def close_mcp(self):
@@ -179,7 +180,7 @@ class BenchmarkRunner:
             max_tokens=4096
         )
         if result.success:
-            # Вычисляем хеш ответа и стоимость
+            # вычисляем хеш ответа и стоимость
             response_hash = compute_hash(result.content)
             costs = self.llm.calculate_cost(
                 model_config,
