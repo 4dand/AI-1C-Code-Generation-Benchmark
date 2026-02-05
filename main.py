@@ -24,6 +24,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from src.core.benchmark import BenchmarkRunner
+from src.core.reporter import ExperimentReporter
 from src.utils.file_ops import load_yaml
 from src.utils.cli import print_section, print_kv, print_table_header, print_table_row
 
@@ -53,10 +54,11 @@ async def cmd_run(args):
         print_kv("Всего токенов", f"{result.total_tokens:,}")
         print_kv("Общая стоимость", f"${result.total_cost:.4f}")
         print_kv("Общее время", f"{result.total_time:.1f} сек")
-
-        det_pass = sum(1 for t in result.task_results if t.determinism and t.determinism.same_seed_match)
-        det_total = len(result.task_results)
-        print_kv("Детерминизм", f"{det_pass}/{det_total} пройдено")
+        
+        # Средний процент детерминизма
+        if result.task_results:
+            avg_match = sum(t.determinism.match_percent for t in result.task_results if t.determinism) / len(result.task_results)
+            print_kv("Детерминизм", f"{avg_match:.1f}% (среднее совпадение ответов)")
         print()
         
     finally:
@@ -98,6 +100,22 @@ def cmd_info(args):
     print()
 
 
+def cmd_report(args):
+    """Показать отчёт по результатам"""
+    reporter = ExperimentReporter(results_dir="results")
+    
+    if args.file:
+        if args.markdown:
+            exp = reporter.parser.parse_experiment(Path(args.file))
+            if exp:
+                md_path = args.file.replace('.json', '.md')
+                reporter.export_markdown(exp, md_path)
+        else:
+            reporter.print_full_report(Path(args.file))
+    else:
+        reporter.generate_report(category=args.category, latest=args.latest)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="AI-1C-Code-Generation-Benchmark CLI",
@@ -106,12 +124,17 @@ def main():
 Примеры:
   %(prog)s run -c A -m gemini -t A1      # Запуск одной задачи
   %(prog)s run -c A --all-models         # Запуск всех моделей
+  %(prog)s report -c B                   # Отчёт по категории B
+  %(prog)s report -n 5                   # Последние 5 экспериментов
+  %(prog)s report -f results/exp.json    # Конкретный файл
   %(prog)s info --balance                # Проверка баланса OpenRouter
   %(prog)s info --models                 # Список доступных моделей
   %(prog)s info --tasks A                # Список задач категории
         """
     )
     subparsers = parser.add_subparsers(dest="command", help="Команды")
+    
+    # run command
     run_parser = subparsers.add_parser("run", help="Запустить эксперимент")
     run_parser.add_argument("-c", "--category", choices=["A", "B"], default="A",
                            help="Категория задач (по умолчанию: A)")
@@ -123,6 +146,19 @@ def main():
                            help="ID задач (например: A1 A2)")
     run_parser.add_argument("--no-mock", action="store_true",
                            help="Использовать реальный MCP сервер (категория B)")
+    
+    # report command
+    report_parser = subparsers.add_parser("report", help="Отчёт по результатам")
+    report_parser.add_argument("-c", "--category", choices=["A", "B"],
+                              help="Фильтр по категории")
+    report_parser.add_argument("-n", "--latest", type=int,
+                              help="Показать последние N экспериментов")
+    report_parser.add_argument("-f", "--file",
+                              help="Конкретный файл результатов")
+    report_parser.add_argument("--markdown", action="store_true",
+                              help="Экспортировать в Markdown (с -f)")
+    
+    # info command
     info_parser = subparsers.add_parser("info", help="Показать информацию")
     info_parser.add_argument("--balance", action="store_true",
                             help="Показать баланс OpenRouter")
@@ -137,6 +173,8 @@ def main():
     
     if args.command == "run":
         asyncio.run(cmd_run(args))
+    elif args.command == "report":
+        cmd_report(args)
     elif args.command == "info":
         cmd_info(args)
 
